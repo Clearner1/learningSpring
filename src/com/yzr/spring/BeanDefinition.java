@@ -4,6 +4,7 @@ public class BeanDefinition {
 
     private Class type;
     private String scope;
+    private boolean isLazy;
 
     public Class getType() {
         return type;
@@ -19,5 +20,13 @@ public class BeanDefinition {
 
     public void setScope(String scope) {
         this.scope = scope;
+    }
+
+    public boolean getLazy() {
+        return isLazy;
+    }
+
+    public void setLazy(boolean lazy) {
+        isLazy = lazy;
     }
 }
