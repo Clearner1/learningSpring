@@ -43,14 +43,14 @@ public class YzrApplicationContext {
                         // 获取到每一个.class 文件：com/yzr/service/AppConfig.class
                         String className = absolutePath.substring(absolutePath.indexOf("com"),
                                 absolutePath.indexOf(".class"));
-                        className = className.replace("/", ".");
+                        className = className.replace("\\", ".").replace("/", ".");
                         System.out.println(className);
                         try {
+                            // 在扫描阶段，我们只需要读取注解信息，还不需要初始化类
                             Class<?> clazz = classLoader.loadClass(className);
-
                             // .class 内有 Component 注解
                             if (clazz.isAnnotationPresent(Component.class)) {
-
+                                // beandefinition -> 设置bean的元信息
                                 BeanDefinition beanDefinition = new BeanDefinition();
                                 beanDefinition.setType(clazz);
                                 if (clazz.isAnnotationPresent(Scope.class)) {
