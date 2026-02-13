@@ -28,6 +28,7 @@ public class YzrApplicationContext {
             // 转换为绝对路径
             ClassLoader classLoader = YzrApplicationContext.class.getClassLoader();
             URL resource = classLoader.getResource(path);
+            // System.out.println("resource + " + resource);
 
             // 需要解码 URL，因为路径中的空格会被编码为 %20
             String decodedPath = URLDecoder.decode(resource.getFile(), StandardCharsets.UTF_8);
@@ -97,15 +98,39 @@ public class YzrApplicationContext {
     }
 
     private Object createBean(String beanName, BeanDefinition beanDefinition) {
-        Class clazz = beanDefinition.getType();
+        Class<?> clazz = beanDefinition.getType();
         try {
             Object instance = clazz.getConstructor().newInstance();
 
+            // 依赖注入（先 byType，再 byName）
             for (Field f : clazz.getDeclaredFields()) {
                 if (f.isAnnotationPresent(Autowired.class)) {
                     f.setAccessible(true);
-                    // IOC: 在容器中查找当前Name 的 Bean
-                    f.set(instance, getBean(f.getName()));
+
+                    // 第一步：按类型查找（byType）
+                    Class<?> fieldType = f.getType();
+                    String candidateName = null;
+                    int matchCount = 0;
+
+                    for (String name : beanDefinitionMap.keySet()) {
+                        BeanDefinition bd = beanDefinitionMap.get(name);
+                        // isAssignableFrom: 判断 bd 中的类型是否是字段类型的子类或相同类型
+                        if (fieldType.isAssignableFrom(bd.getType())) {
+                            candidateName = name;
+                            matchCount++;
+                        }
+                    }
+
+                    if (matchCount == 1) {
+                        // 按类型只找到一个，直接使用
+                        f.set(instance, getBean(candidateName));
+                    } else if (matchCount > 1) {
+                        // 按类型找到多个，退化为 byName（用字段名兜底）
+                        f.set(instance, getBean(f.getName()));
+                    } else {
+                        throw new RuntimeException(
+                                "No bean found for type: " + fieldType.getName());
+                    }
                 }
             }
 
