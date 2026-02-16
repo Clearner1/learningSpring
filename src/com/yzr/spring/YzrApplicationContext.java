@@ -6,10 +6,11 @@ import java.lang.reflect.Field;
 import java.net.URL;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class YzrApplicationContext {
-    private Class configClass;
+    private Class<?> configClass;
     // 存储 bean 的元信息P
     private ConcurrentHashMap<String, BeanDefinition> beanDefinitionMap = new ConcurrentHashMap<>();
     // 单例池
@@ -17,7 +18,10 @@ public class YzrApplicationContext {
 
     private final static String SINGLETON = "singleton";
 
-    public YzrApplicationContext(Class configClass) {
+    // 存储BeanProcessor
+    private ArrayList<BeanPostProcessor> beanPostProcessorsList = new ArrayList<>();
+
+    public YzrApplicationContext(Class<?> configClass) {
         this.configClass = configClass;
         // 检查配置类中是否带有 ComponentScan 注解，快速定位 bean 的位置
         if (configClass.isAnnotationPresent(ComponentScan.class)) {
@@ -33,7 +37,6 @@ public class YzrApplicationContext {
             // 需要解码 URL，因为路径中的空格会被编码为 %20
             String decodedPath = URLDecoder.decode(resource.getFile(), StandardCharsets.UTF_8);
             File file = new File(decodedPath);
-            System.out.println(file);
             if (file.isDirectory()) {
                 File[] listFiles = file.listFiles();
 
@@ -51,6 +54,14 @@ public class YzrApplicationContext {
                             Class<?> clazz = classLoader.loadClass(className);
                             // .class 内有 Component 注解
                             if (clazz.isAnnotationPresent(Component.class)) {
+
+                                // 如果当前clazz实现了BeanPostProcessor，则将该类存储到beanPostProcessorsList
+                                if (BeanPostProcessor.class.isAssignableFrom(clazz)) {
+                                    BeanPostProcessor newInstance = (BeanPostProcessor) clazz.getDeclaredConstructor()
+                                            .newInstance();
+                                    beanPostProcessorsList.add(newInstance);
+                                }
+
                                 // beandefinition -> 设置bean的元信息
                                 BeanDefinition beanDefinition = new BeanDefinition();
                                 beanDefinition.setType(clazz);
@@ -67,11 +78,13 @@ public class YzrApplicationContext {
                                     beanDefinition.setLazy(true);
                                 }
 
+                                // 填写beanName
                                 Component component = clazz.getAnnotation(Component.class);
                                 String beanName = component.value();
                                 if (beanName.equals("")) {
                                     beanName = Introspector.decapitalize(clazz.getSimpleName());
                                 }
+                                // 存储beandefinition
                                 beanDefinitionMap.put(beanName, beanDefinition);
 
                             }
@@ -89,9 +102,7 @@ public class YzrApplicationContext {
             BeanDefinition beanDefinition = beanDefinitionMap.get(beanName);
             if (beanDefinition.getScope().equals(SINGLETON) &&
                     !beanDefinition.getLazy()) {
-                Object bean = createBean(beanName, beanDefinition);
-                // 将单例 Bean 存储到单例池
-                singletonObjects.put(beanName, bean);
+                getBean(beanName);
             }
         }
 
@@ -108,7 +119,7 @@ public class YzrApplicationContext {
                     f.setAccessible(true);
 
                     // 第一步：按类型查找（byType）
-                    Class<?> fieldType = f.getType();
+                    Class<?> fieldType = f.getType(); // String (type) name、UserService (type) userservice
                     String candidateName = null;
                     int matchCount = 0;
 
@@ -138,6 +149,29 @@ public class YzrApplicationContext {
             if (instance instanceof BeanNameAware) {
                 ((BeanNameAware) instance).setBeanName(beanName);
             }
+
+            // 前置处理
+            for (BeanPostProcessor beanPostProcessor : beanPostProcessorsList) {
+                Object result = beanPostProcessor.postProcessBeforeInitialization(beanName, instance);
+                if (result != null) {
+                    instance = result;
+                }
+            }
+
+            // Bean初始化
+            // 在所有属性（依赖）都注入完成之后，给 Bean 一个机会去执行自定义的初始化逻辑。
+            if (instance instanceof InitializingBean) {
+                ((InitializingBean) instance).afterPropertiesSet();
+            }
+
+            // 后置处理
+            for (BeanPostProcessor beanPostProcessor : beanPostProcessorsList) {
+                Object result = beanPostProcessor.postProcessAfterInitialization(beanName, instance);
+                if (result != null) {
+                    instance = result;
+                }
+            }
+
             return instance;
         } catch (Exception e) {
             throw new RuntimeException("Failed to create bean: " + beanName, e);

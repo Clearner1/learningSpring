@@ -7,10 +7,10 @@ public class Test {
         // 传递配置类进入容器
         // 通过配置类注册为bean
         YzrApplicationContext applicationContext = new YzrApplicationContext(AppConfig.class);
-        UserService bean = (UserService) applicationContext.getBean("userService");
+        UserInterface bean = (UserInterface) applicationContext.getBean("userService");
         bean.test();
-        String beanName = bean.beanName;
-        System.out.println(beanName);
+        // String beanName = bean.beanName;
+        // System.out.println(beanName);
 
     }
 }
